@@ -73,12 +73,13 @@ bool slice_empty(const str_slice s) {
 }
 
 const char* build_full_path(const char* progname, const str_slice slice) {
-  size_t len_progname = strlen(progname);
+  const size_t len_progname = strlen(progname);
   // null + / so + 2.
-  size_t full_path_size = len_progname + slice.len + 1 + 1;
-  char *full_path = malloc(sizeof(char*) * full_path_size);
+  const size_t full_path_size = len_progname + slice.len + 1 + 1;
+  const size_t malloc_size = sizeof(char) * full_path_size;
+  char *full_path = malloc(malloc_size);
 
-  full_path[full_path_size] = '\0';
+  full_path[full_path_size - 1] = '\0';
   strncpy(full_path, slice.data, slice.len);
   full_path[slice.len] = '/';
   strncpy(full_path + slice.len + 1, progname, len_progname);
@@ -102,6 +103,7 @@ typedef struct _process {
 } Process;
 
 Process process_new(const char* args[], const char* paths, char** env);
+void process_drop(Process* p);
 const char* process_name(const Process* p);
 const char** process_args(const Process* p);
 const char* process_full_path(const Process* p);
@@ -111,7 +113,8 @@ bool process_is_valid(const Process* p);
 bool process_launch(const Process* p);
 bool process_launch_wait(const Process* p);
 
-
+static
+inline
 Process _process_new(const dev_t device, const ino_t inode,
                      const char* full_path, const char* args[],
                      char* env[]) {
@@ -176,6 +179,13 @@ Process process_new(const char* args[], const char* paths, char** env) {
 }
 
 /*
+ * Free ressources allocated within process_new.
+ */
+void process_drop(Process* p) {
+  free((char*)process_full_path(p));
+}
+
+/*
  * Don't mess up with the pointer!
  */
 inline
@@ -203,6 +213,7 @@ pid_t process_pid(const Process* p) {
   return p->pid;
 }
 
+extern
 inline
 bool process_is_valid(const Process* p) {
   return p->full_path != NULL;
@@ -210,7 +221,10 @@ bool process_is_valid(const Process* p) {
 
 /*
  * See: https://www.securecoding.cert.org/confluence/display/c/FIO45-C.+Avoid+TOCTOU+race+conditions+while+accessing+files
+ * Maybe we should test acess and related stuff?
  */
+static
+inline
 bool _check_toctou(const Process* p, const struct stat *c) {
   return (p->st_dev == c->st_dev
           && p->st_ino == c->st_ino);
@@ -233,11 +247,11 @@ bool _process_launch(const Process* p) {
       perror("execve"); // SHOULD not return.
       return false;
     } else {
-      fprintf(stderr, "%s is not the file expected suspect a time of use time of check race condition(TOCTOU)!\n", process_name(p));
+      fprintf(stderr, "%s is not the file expected suspect a time of use, time of check race condition(TOCTOU)!\n", process_name(p));
       return false;
     }
-
   } else if (pid > 0) {
+    // It's Ok to relax constness here. pid should not be checked before launching the process.
     ((Process *)p)->pid = pid;
     return true;
   } else {
@@ -252,6 +266,7 @@ bool _process_launch(const Process* p) {
  *
  * TODO: Improve return value...
  */
+inline
 bool process_launch(const Process* p) {
   return _process_launch(p);
 }
@@ -259,6 +274,7 @@ bool process_launch(const Process* p) {
 /*
  * Block process/thread until command succeed.
  */
+inline
 bool process_launch_wait(const Process* p) {
   bool process_status = _process_launch(p);
   if (process_status) {
@@ -281,6 +297,7 @@ int main(int argc, const char* argv[]) {
         fprintf(stderr, "Something went wrong.\n");
       }
     }
+    process_drop(&p);
     free((void *)paths); // lifetime dans ce block.
   }
   return EXIT_SUCCESS;
