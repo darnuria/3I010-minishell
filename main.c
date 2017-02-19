@@ -38,32 +38,52 @@
 #include <errno.h>
 
 /*
- * Little slice struct for avoiding copy and
- * getting cool with string usage! all inline.
+ * Little slice struct for char* null terminated.
  */
 typedef struct _str_slice {
   const char* data;
   const uint32_t len; // end - data len of slice.
 } str_slice;
 
+const char* slice_data(const str_slice s);
+uint32_t slice_len(const str_slice slice);
+str_slice slice_new(const char* data, const uint32_t len);
 str_slice slice_at(const char* data, const char c);
 str_slice slice_next(const str_slice slice, const char c);
 bool slice_empty(const str_slice s);
 
 inline
-str_slice slice_at(const char* data, const char c) {
-  const char* end = strchr(data, c);
-  return (const str_slice) { data, end - data };
+uint32_t slice_len(const str_slice slice) {
+  return slice.len;
 }
 
 inline
-str_slice slice_next(const str_slice slice, const char c) {
-  const char* data = slice.data + slice.len + 1; // skip c
+const char* slice_data(const str_slice s) {
+  return s.data;
+}
+
+/*
+ * Caller keeps responsiblity for lifetime of data.
+ */
+inline
+str_slice slice_new(const char* data, uint32_t len) {
+  return (str_slice) { data, len };
+}
+
+inline
+str_slice slice_at(const char* data, const char c) {
+  const char* end = strchr(data, c);
+  return slice_new(data, end - data);
+}
+
+inline
+str_slice slice_next(const str_slice s, const char c) {
+  const char* data = slice_data(s) + slice_len(s) + 1; // skip c
   const char* end = strchr(data, c);
   if (end != NULL) {
-    return (str_slice) { data, end - data };
+    return slice_new(data, end - data);
   } else {
-    return (str_slice) {0, 0};
+    return slice_new(NULL, 0);
   }
 }
 
@@ -121,8 +141,21 @@ Process _process_new(const dev_t device, const ino_t inode,
   return (Process) { 0, device, inode, full_path, args, env };
 }
 
+// TODO: Manage other errors...
+static
+inline
+void _process_new_errors(int err) {
+  // TODO: Manage other errors...
+  switch (err) {
+    case ENOENT:
+    case ENAMETOOLONG:
+    case EACCES:
+    case ENOTDIR: { break; }
+    default: { perror("acess"); break; }
+  }
+}
+
 /*
- * No malloc it's just a bunch of pointers...
  * - First it try to find the full path to the program in paths variable. or locally.
  * - Next it collect perms, Inode, device info with stat.
  * Should be tested against process_valid
@@ -147,10 +180,10 @@ Process process_new(const char* args[], const char* paths, char** env) {
   const char* progname = args[0];
   // TODO: Test if progname contain / if so must be absolute.
   // Search for a valid path.
-  for (str_slice slice = slice_at(paths, ':');
-       !slice_empty(slice);
-       slice = slice_next(slice, ':')) {
-    const char *full_path = build_full_path(progname, slice);
+  for (str_slice s = slice_at(paths, ':');
+       !slice_empty(s);
+       s = slice_next(s, ':')) {
+    const char *full_path = build_full_path(progname, s);
     if (access(full_path, X_OK) == 0) {
       struct stat prog_stat = {};
       if (stat(full_path, &prog_stat) == -1) {
@@ -163,14 +196,7 @@ Process process_new(const char* args[], const char* paths, char** env) {
         // error = EACCES;
       }
     } else {
-      // TODO: Manage other errors...
-      switch (errno) {
-      case ENOENT:
-      case ENAMETOOLONG:
-      case EACCES:
-      case ENOTDIR: { break; }
-      default: { perror("acess"); break; }
-      }
+      _process_new_errors(errno);
     }
     free((void *)full_path);
   }
