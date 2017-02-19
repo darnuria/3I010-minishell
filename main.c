@@ -310,6 +310,7 @@ bool process_launch_wait(const Process* p) {
 }
 
 extern char **environ;
+
 int main(int argc, const char* argv[]) {
   if (argc <= 1) {
     // TODO: Checking if argv[1] = ./process_name.
@@ -334,8 +335,9 @@ int main(int argc, const char* argv[]) {
         char* buffer_strtok = NULL;
         // buff is null on subsequent call of strtok_r see man strtok_r.
         char *buff = line;
-        for (size_t i = 0; true ; i += 1, buff = NULL) {
-          char* token = strtok_r(buff, " ", &buffer_strtok);
+        size_t i = 0;
+        for (; true ; i += 1, buff = NULL) {
+          char* token = strtok_r(buff, " \n", &buffer_strtok);
           if (token != NULL) {
             args[i] = token;
             // REALLY naive solution...
@@ -348,6 +350,7 @@ int main(int argc, const char* argv[]) {
             break;
           }
         }
+        if (i == 0) { continue; }
 
         fputc('\n', stdout);
         const char* paths = strdup(getenv("PATH"));
