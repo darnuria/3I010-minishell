@@ -1,4 +1,4 @@
-/*;
+/*
  * Author: Axel Viala
  * In 3I010 Systeme course at Université Pierre et Marie Curie
  * Year 2016 - 2017
@@ -42,7 +42,7 @@
  */
 typedef struct _str_slice {
   const char* data;
-  const uint32_t len; // end - data len of slice.
+  uint32_t len; // end - data len of slice.
 } str_slice;
 
 const char* slice_data(const str_slice s);
@@ -73,7 +73,8 @@ str_slice slice_new(const char* data, uint32_t len) {
 inline
 str_slice slice_at(const char* data, const char c) {
   const char* end = strchr(data, c);
-  return slice_new(data, end - data);
+  uint32_t len = end - data;
+  return slice_new(data, len);
 }
 
 inline
@@ -92,17 +93,15 @@ bool slice_empty(const str_slice s) {
   return s.len == 0;
 }
 
-const char* build_full_path(const char* progname, const str_slice slice) {
-  const size_t len_progname = strlen(progname);
-  // null + / so + 2.
-  const size_t full_path_size = len_progname + slice.len + 1 + 1;
-  const size_t malloc_size = sizeof(char) * full_path_size;
+const char* build_full_path(const str_slice prog, const str_slice slice) {
+  size_t full_path_size = slice_len(prog) + slice_len(slice) + 2; // save place for '/' and '\0'.
+  size_t malloc_size = sizeof(char) * full_path_size;
   char *full_path = malloc(malloc_size);
 
   full_path[full_path_size - 1] = '\0';
-  strncpy(full_path, slice.data, slice.len);
-  full_path[slice.len] = '/';
-  strncpy(full_path + slice.len + 1, progname, len_progname);
+  memcpy(full_path, slice_data(slice), slice_len(slice));
+  full_path[slice_len(slice)] = '/';
+  memcpy(full_path + slice_len(slice) + 1, slice_data(prog), slice_len(prog));
 
   return (const char *) full_path;
 }
@@ -115,8 +114,8 @@ const char* build_full_path(const char* progname, const str_slice slice) {
  */
 typedef struct _process {
   pid_t pid;          // Initialized when launched by parent.
-  const dev_t st_dev; // from stat(full_path, ...)
-  const ino_t st_ino; // from stat(full_path, ...)
+  dev_t st_dev; // from stat(full_path, ...)
+  ino_t st_ino; // from stat(full_path, ...)
   const char* full_path;
   const char** args;
   char** env;
@@ -162,24 +161,24 @@ void _process_new_errors(int err) {
  *
  * Exemple:
  * ```c
- * const char* args[] = { "ls", "-a", NULL };
- * const char* env[] = { "PATH=/usr/bin:/bin", NULL };
- * const char* paths = "/usr/bin:/bin";
+ * char* args[] = { "ls", "-a", NULL };
+ * char* env[] = { "PATH=/usr/bin:/bin", NULL };
+ * char* paths = "/usr/bin:/bin";
  * Process p = process_new(args, paths, env);
  * if (process_is_valid(&p)) {
  *   if (!process_launch(&p)) {
  *     fprintf(stderr, "Something went wrong!");
  *   }
  * }
- * ```
+s * ```
  * Note: Something strange with passing paths and env...
  *       maybe passing only a const copy of env.
  */
 inline
 Process process_new(const char* args[], const char* paths, char** env) {
-  const char* progname = args[0];
   // TODO: Test if progname contain / if so must be absolute.
   // Search for a valid path.
+  const str_slice progname = slice_new(args[0], strlen(args[0]));
   for (str_slice s = slice_at(paths, ':');
        !slice_empty(s);
        s = slice_next(s, ':')) {
