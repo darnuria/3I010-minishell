@@ -311,19 +311,64 @@ bool process_launch_wait(const Process* p) {
 
 extern char **environ;
 int main(int argc, const char* argv[]) {
-  if (argc > 1) {
+  if (argc <= 1) {
     // TODO: Checking if argv[1] = ./process_name.
-    const char* paths = strdup(getenv("PATH"));
-    const char** process_args = &argv[1];
+    size_t len = 0;
+    ssize_t read = 0;
+    char *line = NULL;
+    bool should_wait = true;
 
-    Process p = process_new(process_args, paths, environ);
-    if (process_is_valid(&p)) {
-      if (!process_launch_wait(&p)) {
-        fprintf(stderr, "Something went wrong.\n");
+    while (true) {
+      read = getdelim(&line, &len, '\n', stdin);
+      if (read != -1) {
+        size_t count = 0;
+        // count spaces for aproximation of args size.
+        for (size_t i = 0; i < read; i += 1) {
+          if (line[i] == ' ') { count += 1; }
+        }
+
+        // Alloc apromatively readed chars / (space count)... think about free this after.
+        char** args = malloc(sizeof(char *) * (read / (count + 1)));
+
+        // REALLY simple parsing of command line.
+        char* buffer_strtok = NULL;
+        // buff is null on subsequent call of strtok_r see man strtok_r.
+        char *buff = line;
+        for (size_t i = 0; true ; i += 1, buff = NULL) {
+          char* token = strtok_r(buff, " ", &buffer_strtok);
+          if (token != NULL) {
+            args[i] = token;
+            // REALLY naive solution...
+            // Test against builtins...
+            // Or use flex/bison seriously...
+            if (strchr(token, '&')) {
+              should_wait = false;
+            }
+          } else {
+            break;
+          }
+        }
+
+        fputc('\n', stdout);
+        const char* paths = strdup(getenv("PATH"));
+        Process p = process_new((const char**)args, paths, environ);
+        if (process_is_valid(&p)) {
+          bool launch_status = true;
+          if (should_wait) {
+            launch_status = process_launch_wait(&p);
+          } else {
+            launch_status = process_launch(&p);
+          }
+          if (!launch_status) {
+            fprintf(stderr, "Something went wrong.\n");
+          }
+        }
+        process_drop(&p);
+        free((void *)paths); // lifetime dans ce block.
+      } else {
+        perror("getline");
       }
     }
-    process_drop(&p);
-    free((void *)paths); // lifetime dans ce block.
   }
   return EXIT_SUCCESS;
 }
