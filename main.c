@@ -75,7 +75,7 @@ int main(void) {
   ssize_t read = 0;
   char* line = NULL;
 
-  const size_t size = 1 + 1;
+  const size_t size = 63 + 1;
   char** args = malloc(sizeof(*args) * (size));
   args[size - 1] = NULL;
   const char* prompt = "$ ";
