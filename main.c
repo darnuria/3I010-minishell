@@ -58,10 +58,10 @@ char** parse_args(char** args, char* line) {
     }
   }
 
-  fprintf(stderr, "i: %ld;\n", i);
   if (i == 0) {
     return NULL;
   } else {
+    args[i] = NULL;
     return args;
   }
 }
@@ -85,8 +85,10 @@ int main(void) {
   Process background_process = process_empty();
 
   while (true) {
+
     (void) fputs(prompt, stdout);
     read = getdelim(&line, &len, '\n', stdin);
+
     if (read != -1) {
       size_t count = 0;
       // count spaces for aproximation of args size.
@@ -99,11 +101,11 @@ int main(void) {
       size_t approx_args = (count + 1);
       if (approx_args > size) {
         args = realloc(args, sizeof(*args) * (approx_args + 1));
+        // Not neccessary
         for (size_t i = 0; i <= approx_args; i += 1) {
           args[i] = NULL;
         }
       }
-      fprintf(stderr, "size_args: %ld\n", approx_args);
 
       // Search for background job symbol
       bool should_wait = true;
@@ -121,7 +123,6 @@ int main(void) {
         continue;
       }
 
-
       const char* paths = strdup(getenv("PATH"));
       Process p = process_new((const char**)args, paths, environ);
       if (process_is_valid(&p)) {
@@ -138,7 +139,6 @@ int main(void) {
         }
       }
 
-
       if (!process_equals(&p, &background_process)) {
         process_drop(&p);
       }
@@ -149,11 +149,13 @@ int main(void) {
     }
 
     // Check for terminated process in background.
-    if (process_is_valid(&background_process) && process_check_status(&background_process)) {
+    if (process_is_valid(&background_process)
+        && process_check_status(&background_process)) {
       process_drop(&background_process);
       background_process = process_empty();
     }
   }
+  // Only way to get it free'd is to handle sigkill...
   // free(args);
 
   return EXIT_SUCCESS;
